@@ -1,4 +1,5 @@
 # Wasefire
+try
 
 This project aims at making firmware development more accessible and secure by
 providing a platform for WebAssembly applets. See the
