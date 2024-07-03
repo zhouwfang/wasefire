@@ -25,6 +25,7 @@ esac
 case "$2" in
   base) ;;
   wasm3) ;;
+  wasmi) ;;
   *) echo "Unsupported runtime: $2"; exit 1 ;;
 esac
 

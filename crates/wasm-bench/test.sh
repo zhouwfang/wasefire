@@ -23,6 +23,7 @@ test_helper
 
 cargo test --features=target-linux,runtime-base
 cargo test --features=target-linux,runtime-wasm3
+cargo test --features=target-linux,runtime-wasmi
 cargo check --target=thumbv7em-none-eabi --features=target-nordic,runtime-base
 # wasm3/source/wasm3.h:16:10: fatal error: 'stdlib.h' file not found
 # cargo check --target=thumbv7em-none-eabi --features=target-nordic,runtime-wasm3
