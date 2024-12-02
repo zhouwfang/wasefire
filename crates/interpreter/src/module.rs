@@ -240,6 +240,8 @@ impl<'m> Module<'m> {
                 j += ls_idx + 1;
             }
         }
+        #[cfg(feature = "debug")]
+        println!("i={}, j={}", i, j);
         let entry = self.side_tables[i][j].view();
         unsafe {
             parser.restore(Self::jump(parser.save(), entry.delta_ip as isize));
