@@ -153,6 +153,24 @@ impl<'m> Context<'m> {
         }
         self.check_section(parser, SectionId::Custom)?;
         check(parser.is_empty())?;
+        for i in 0 .. side_tables.len() {
+            #[cfg(feature = "debug")]
+            println!("i={}", i);
+            for j in 0 .. side_tables[i].len() {
+                #[cfg(feature = "debug")]
+                println!("j={}", j);
+                let side_table = &side_tables[i][j];
+                let side_table_view = side_table.view();
+                #[cfg(feature = "debug")]
+                println!("delta_ip={}", side_table_view.delta_ip);
+                #[cfg(feature = "debug")]
+                println!("delta_stp={}", side_table_view.delta_stp);
+                #[cfg(feature = "debug")]
+                println!("val_cnt={}", side_table_view.val_cnt);
+                #[cfg(feature = "debug")]
+                println!("pop_cnt={}", side_table_view.pop_cnt);
+            }
+        }
         Ok(side_tables)
     }
 
@@ -596,6 +614,8 @@ impl<'a, 'm> Expr<'a, 'm> {
             Else => {
                 match core::mem::replace(&mut self.label().kind, LabelKind::Block) {
                     LabelKind::If(source) => {
+                        #[cfg(feature = "debug")]
+                        println!("valid Else side_table.len={}\n", self.side_table.entries.len());
                         self.side_table.stitch(source, self.branch_target(source.result))?
                     }
                     _ => Err(invalid())?,
@@ -619,10 +639,14 @@ impl<'a, 'm> Expr<'a, 'm> {
                 self.swaps(res)?;
             }
             BrTable(ls, ln) => {
+                #[cfg(feature = "debug")]
+                println!("valid BrTable ln={}", ln); // last index?
                 self.pop_check(ValType::I32)?;
                 let tn = self.br_label(ln)?;
                 self.peeks(tn)?;
                 for l in ls {
+                    #[cfg(feature = "debug")]
+                    println!("valid BrTable l={} ", l);
                     let t = self.br_label(l)?;
                     check(tn.len() == t.len())?;
                     self.peeks(t)?;
@@ -854,6 +878,7 @@ impl<'a, 'm> Expr<'a, 'm> {
             self.side_table.stitch(source, target)?;
         }
         let label = self.label();
+        // Else
         if let LabelKind::If(source) = label.kind {
             check(label.type_.params == label.type_.results)?;
             self.side_table.stitch(source, target)?;

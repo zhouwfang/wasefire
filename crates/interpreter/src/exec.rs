@@ -210,6 +210,8 @@ impl<'m> Store<'m> {
     pub fn invoke<'a>(
         &'a mut self, inst: InstId, name: &str, args: Vec<Val>,
     ) -> Result<RunResult<'a, 'm>, Error> {
+        #[cfg(feature = "debug")]
+        println!("Store invoke\n");
         let inst_id = self.inst_id(inst)?;
         let inst = &self.insts[inst_id];
         let ptr = match inst.module.export(name).ok_or_else(not_found)? {
@@ -217,6 +219,7 @@ impl<'m> Store<'m> {
             _ => return Err(Error::Invalid),
         };
         let inst_id = ptr.instance().unwrap_wasm();
+        // self.insts[inst_id].module.side_table_entry_indices = (0, 0);
         let inst = &mut self.insts[inst_id];
         let x = ptr.index();
         let t = inst.module.func_type(x);
@@ -333,6 +336,8 @@ impl<'a, 'm> Call<'a, 'm> {
 
     /// Resumes execution with the results from the host.
     pub fn resume(self, results: &[Val]) -> Result<RunResult<'a, 'm>, Error> {
+        #[cfg(feature = "debug")]
+        println!("Call resume\n");
         let Continuation { mut thread, arity, .. } = self.store.threads.pop().unwrap();
         check(results.len() == arity)?;
         thread.push_values(results);
@@ -514,13 +519,21 @@ impl<'m> Store<'m> {
     }
 
     fn func_type(&self, ptr: Ptr) -> FuncType<'m> {
+        #[cfg(feature = "debug")]
+        println!("func_type\n");
         match ptr.instance() {
             Side::Host => self.funcs[ptr.index() as usize].1,
-            Side::Wasm(x) => self.insts[x].module.func_type(ptr.index()),
+            Side::Wasm(x) => {
+                #[cfg(feature = "debug")]
+                println!("func_type idx={}\n", ptr.index());
+                self.insts[x].module.func_type(ptr.index())
+            }
         }
     }
 
     fn func_ptr(&self, inst_id: usize, x: FuncIdx) -> Ptr {
+        #[cfg(feature = "debug")]
+        println!("func_ptr\n");
         self.insts[inst_id].funcs.ptr(inst_id, x)
     }
 
@@ -556,6 +569,8 @@ impl<'m> Store<'m> {
     }
 
     fn resolve(&mut self, import: &Import<'m>, imp_type_: ExternType<'m>) -> Result<Ptr, Error> {
+        #[cfg(feature = "debug")]
+        println!("resolve\n");
         let host_name = HostName { module: import.module, name: import.name };
         let mut found = None;
         let funcs_len = match self.func_default {
@@ -757,53 +772,116 @@ impl<'m> Thread<'m> {
             // TODO: When trapping, we could return some CoreDump<'m> that contains the Thread<'m>.
             // This permits to dump the frames.
             match self.step(store)? {
-                ThreadResult::Continue(x) => self = x,
-                ThreadResult::Done(x) => return Ok(RunResult::Done(x)),
-                ThreadResult::Host => return Ok(RunResult::Host(Call { store })),
+                ThreadResult::Continue(x) => {
+                    #[cfg(feature = "debug")]
+                    println!("ThreadResult::Continue\n");
+                    self = x
+                }
+                ThreadResult::Done(x) => {
+                    #[cfg(feature = "debug")]
+                    println!("ThreadResult::Done\n");
+                    return Ok(RunResult::Done(x));
+                }
+                ThreadResult::Host => {
+                    #[cfg(feature = "debug")]
+                    println!("ThreadResult::Host\n");
+                    return Ok(RunResult::Host(Call { store }));
+                }
             }
+            // let inst_id = self.frame().inst_id;
+            // let inst = &mut store.insts[inst_id];
+            // inst.module.side_table_entry_indices = (0, 0);
         }
     }
 
     fn step(mut self, store: &mut Store<'m>) -> Result<ThreadResult<'m>, Error> {
         use Instr::*;
         let saved = self.parser.save();
+        #[cfg(feature = "debug")]
+        println!("step saved.len()={}\n", saved.len());
         let inst_id = self.frame().inst_id;
         let inst = &mut store.insts[inst_id];
         match self.parser.parse_instr().into_ok() {
             Unreachable => return Err(trap()),
             Nop => (),
-            Block(b) => self.push_label(self.blocktype(inst, &b), LabelKind::Block),
-            Loop(b) => self.push_label(
-                self.blocktype(inst, &b),
-                LabelKind::Loop(LoopState {
-                    parser_data: saved,
-                    side_table_idx: *inst.module.index_in_side_table(),
-                }),
-            ),
-            If(b) => match self.pop_value().unwrap_i32() {
-                0 => {
-                    self.jump_from_if(inst);
-                    self.push_label(self.blocktype(inst, &b), LabelKind::Block);
+            Block(b) => {
+                #[cfg(feature = "debug")]
+                println!("Block\n");
+                self.push_label(self.blocktype(inst, &b), LabelKind::Block)
+            }
+            Loop(b) => {
+                #[cfg(feature = "debug")]
+                println!("Loop\n");
+                self.push_label(
+                    self.blocktype(inst, &b),
+                    LabelKind::Loop(LoopState {
+                        parser_data: saved,
+                        side_table_idx: *inst.module.index_in_side_table(),
+                    }),
+                )
+            }
+            If(b) => {
+                // #[cfg(feature = "debug")]
+                // println!("If\n");
+                match self.pop_value().unwrap_i32() {
+                    0 => {
+                        // self.skip_to_else(inst);
+
+                        #[cfg(feature = "debug")]
+                        println!("If 0\n");
+                        // self.skip_to(inst, None);
+                        self.jump_from_if(inst);
+                        self.push_label(self.blocktype(inst, &b), LabelKind::Block);
+                    }
+                    _ => {
+                        #[cfg(feature = "debug")]
+                        println!("If _\n");
+                        *inst.module.index_in_side_table() += 1;
+                        self.push_label(self.blocktype(inst, &b), LabelKind::If);
+                    }
                 }
-                _ => {
-                    *inst.module.index_in_side_table() += 1;
-                    self.push_label(self.blocktype(inst, &b), LabelKind::If);
-                }
-            },
+            }
             Else => {
+                #[cfg(feature = "debug")]
+                println!("Else\n");
                 self.jump_to_end(inst, None);
                 return Ok(self.exit_label());
             }
-            End => return Ok(self.exit_label()),
-            Br(l) => return Ok(self.pop_label(inst, l, None)),
+            End => {
+                #[cfg(feature = "debug")]
+                println!("End\n");
+                return Ok(self.exit_label());
+            }
+            Br(l) => {
+                #[cfg(feature = "debug")]
+                println!("Br\n");
+                unsafe {
+                    return Ok(self.pop_label(inst, l, None));
+                }
+            }
             BrIf(l) => {
+                #[cfg(feature = "debug")]
+                println!("BrIf\n");
                 if self.pop_value().unwrap_i32() != 0 {
                     return Ok(self.pop_label(inst, l, None));
                 }
+                #[cfg(feature = "debug")]
+                println!("BrIf increment side table j\n");
                 *inst.module.index_in_side_table() += 1;
             }
             BrTable(ls, ln) => {
-                let i = self.pop_value().unwrap_i32() as usize;
+                #[cfg(feature = "debug")]
+                println!("exec BrTable ln={}", ln);
+                for l in &ls {
+                    #[cfg(feature = "debug")]
+                    println!("exec BrTable l={} ", l);
+                }
+                let i = self.pop_value().unwrap_i32() as usize; // function input
+
+                #[cfg(feature = "debug")]
+                println!("exec BrTable i={}", i);
+                #[cfg(feature = "debug")]
+                println!("exec BrTable label={}", ls.get(i).cloned().unwrap_or(ln));
                 let ls_idx = i;
                 let mut is_last = false;
                 if i >= ls.len() {
@@ -815,9 +893,20 @@ impl<'m> Thread<'m> {
                     Option::from((ls_idx, is_last)),
                 ));
             }
-            Return => return Ok(self.exit_frame()),
-            Call(x) => return self.invoke(store, store.func_ptr(inst_id, x)),
+            Return => {
+                #[cfg(feature = "debug")]
+                println!("Return\n");
+                // inst.module.side_table_entry_indices = (0, 0);
+                return Ok(self.exit_frame());
+            }
+            Call(x) => {
+                #[cfg(feature = "debug")]
+                println!("Call\n");
+                return self.invoke(store, store.func_ptr(inst_id, x));
+            }
             CallIndirect(x, y) => {
+                #[cfg(feature = "debug")]
+                println!("CallIndirect\n");
                 let i = self.pop_value().unwrap_i32();
                 let x = match store.table(inst_id, x).elems.get(i as usize) {
                     None | Some(Val::Null(_)) => return Err(trap()),
@@ -828,7 +917,11 @@ impl<'m> Thread<'m> {
                 }
                 return self.invoke(store, x);
             }
-            Drop => drop(self.pop_value()),
+            Drop => {
+                #[cfg(feature = "debug")]
+                println!("Drop\n");
+                drop(self.pop_value())
+            }
             Select(_) => {
                 let c = self.pop_value().unwrap_i32();
                 let v2 = self.pop_value();
@@ -839,14 +932,20 @@ impl<'m> Thread<'m> {
                 });
             }
             LocalGet(x) => {
+                #[cfg(feature = "debug")]
+                println!("LocalGet\n");
                 let v = self.frame().locals[x as usize];
                 self.push_value(v);
             }
             LocalSet(x) => {
+                #[cfg(feature = "debug")]
+                println!("LocalSet\n");
                 let v = self.pop_value();
                 self.frame().locals[x as usize] = v;
             }
             LocalTee(x) => {
+                #[cfg(feature = "debug")]
+                println!("LocalTee\n");
                 let v = self.peek_value();
                 self.frame().locals[x as usize] = v;
             }
@@ -880,7 +979,11 @@ impl<'m> Thread<'m> {
                 let n = self.pop_value().unwrap_i32();
                 self.push_value(Val::I32(grow(store.mem(inst_id, 0), n, ())));
             }
-            I32Const(c) => self.push_value(Val::I32(c)),
+            I32Const(c) => {
+                #[cfg(feature = "debug")]
+                println!("I32Const = {}\n", c);
+                self.push_value(Val::I32(c))
+            }
             I64Const(c) => self.push_value(Val::I64(c)),
             #[cfg(feature = "float-types")]
             F32Const(c) => self.push_value(Val::F32(c)),
@@ -1041,6 +1144,15 @@ impl<'m> Thread<'m> {
     }
 
     fn pop_value(&mut self) -> Val {
+        #[cfg(feature = "debug")]
+        println!("pop_value label={:?} ", self.label());
+        if !self.values().is_empty() {
+            for value in self.values() {
+                #[cfg(feature = "debug")]
+                println!("pop_value value={:?} ", value);
+            }
+        }
+
         self.label().values_cnt -= 1;
         self.values().pop().unwrap()
     }
@@ -1068,8 +1180,12 @@ impl<'m> Thread<'m> {
     fn pop_label(
         mut self, inst: &mut Instance<'m>, l: LabelIdx, ls_idx: Option<(usize, bool)>,
     ) -> ThreadResult<'m> {
+        #[cfg(feature = "debug")]
+        println!("pop_label l={}", l);
         let i = self.labels().len() - l as usize - 1;
         if i == 0 {
+            #[cfg(feature = "debug")]
+            println!("pop_label i == 0");
             return self.exit_frame();
         }
         let frame = self.frame();
@@ -1091,6 +1207,8 @@ impl<'m> Thread<'m> {
     fn exit_label(mut self) -> ThreadResult<'m> {
         let frame = self.frame();
         let label = frame.labels.pop().unwrap();
+        #[cfg(feature = "debug")]
+        println!("exit_label={:?}\n", label);
         if frame.labels.is_empty() {
             let values = self.only_pop_values(label.values_cnt);
             let frame = self.frames.pop().unwrap();
@@ -1099,6 +1217,8 @@ impl<'m> Thread<'m> {
                 return ThreadResult::Done(values);
             }
             unsafe { self.parser.restore(frame.ret) };
+            #[cfg(feature = "debug")]
+            println!("exit_label parser.restore\n");
             self.values().extend(values);
         }
         self.label().values_cnt += label.values_cnt;
@@ -1106,6 +1226,8 @@ impl<'m> Thread<'m> {
     }
 
     fn exit_frame(mut self) -> ThreadResult<'m> {
+        #[cfg(feature = "debug")]
+        println!("exit_frame");
         let values_cnt = self.last_frame_values_cnt();
         let mut values = self.only_pop_values(values_cnt);
         let frame = self.frames.pop().unwrap();
@@ -1127,7 +1249,6 @@ impl<'m> Thread<'m> {
     fn jump_from_if(&mut self, inst: &mut Instance<'m>) {
         inst.module.jump_from_if(&mut self.parser);
     }
-
     fn blocktype(&self, inst: &Instance<'m>, b: &BlockType) -> FuncType<'m> {
         match *b {
             BlockType::None => FuncType { params: ().into(), results: ().into() },
@@ -1226,6 +1347,8 @@ impl<'m> Thread<'m> {
     }
 
     fn irelop(&mut self, n: Nx, op: IRelOp) {
+        #[cfg(feature = "debug")]
+        println!("irelop");
         let y = self.pop_value();
         let x = self.pop_value();
         let z = match n {
@@ -1392,6 +1515,8 @@ impl<'m> Thread<'m> {
         let t = store.func_type(ptr);
         let inst_id = match ptr.instance() {
             Side::Host => {
+                #[cfg(feature = "debug")]
+                println!("invoke Host\n");
                 let index = ptr.index() as usize;
                 let t = store.funcs[index].1;
                 let arity = t.results.len();
