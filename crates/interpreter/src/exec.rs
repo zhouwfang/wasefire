@@ -801,7 +801,7 @@ impl<'m> Thread<'m> {
         println!("step saved.len()={}\n", saved.len());
         let inst_id = self.frame().inst_id;
         let inst = &mut store.insts[inst_id];
-        match self.parser.parse_instr().into_ok() {
+        match dbg!(self.parser.parse_instr().into_ok()) {
             Unreachable => return Err(trap()),
             Nop => (),
             Block(b) => {
