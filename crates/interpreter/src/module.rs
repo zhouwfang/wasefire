@@ -215,6 +215,8 @@ impl<'m> Module<'m> {
     }
 
     pub(crate) fn jump_from_if(&mut self, parser: &mut Parser<'m>) {
+        #[cfg(feature = "debug")]
+        println!("jump_from_if");
         let (i, j) = self.side_table_indices;
         let entry = self.side_tables[i][j].view();
         let delta = entry.delta_ip as isize - 1;
@@ -231,6 +233,8 @@ impl<'m> Module<'m> {
     }
 
     pub(crate) fn jump_to_end(&mut self, parser: &mut Parser<'m>, ls_idx: Option<(usize, bool)>) {
+        #[cfg(feature = "debug")]
+        println!("jump_to_end");
         let (i, mut j) = self.side_table_indices;
         // In validation for BrTable, the side table entry for the last label index is created at
         // first.
