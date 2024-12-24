@@ -1041,7 +1041,7 @@ impl<'m> Thread<'m> {
             LabelKind::Block | LabelKind::If => type_.results.len(),
             LabelKind::Loop => type_.params.len(),
         };
-        let label = Label { arity, values_cnt: type_.params.len() };
+        let label = Label { arity, values_cnt: type_.params.len(), kind };
         self.label().values_cnt -= label.values_cnt;
         self.labels().push(label);
     }
@@ -1052,8 +1052,16 @@ impl<'m> Thread<'m> {
             return self.exit_frame();
         }
         let frame = self.frame();
+        let side_table_entry = frame.side_table[0].view();
         let values_cnt: usize = frame.labels[i ..].iter().map(|label| label.values_cnt).sum();
-        let Label { arity, .. } = frame.labels.drain(i ..).next().unwrap();
+        let Label { arity, kind, .. } = frame.labels.drain(i ..).next().unwrap();
+        debug_assert_eq!(arity as u32, side_table_entry.val_cnt);
+        match kind {
+            LabelKind::Block => {}
+            _ => {
+                debug_assert_eq!(values_cnt as u32 - arity as u32, side_table_entry.pop_cnt);
+            }
+        }
         let values_len = self.values().len();
         self.values().drain(values_len - values_cnt .. values_len - arity);
         self.label().values_cnt += arity;
@@ -1419,7 +1427,7 @@ impl<'m> Frame<'m> {
         inst_id: usize, arity: usize, ret: &'m [u8], locals: Vec<Val>,
         side_table: &'m [SideTableEntry],
     ) -> Self {
-        let label = Label { arity, values_cnt: 0 };
+        let label = Label { arity, values_cnt: 0, kind: LabelKind::Block };
         Frame { inst_id, arity, ret, locals, labels: vec![label], side_table }
     }
 
@@ -1439,6 +1447,7 @@ impl<'m> Frame<'m> {
 struct Label {
     arity: usize,
     values_cnt: usize,
+    kind: LabelKind,
 }
 
 #[derive(Debug)]
