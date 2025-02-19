@@ -141,6 +141,7 @@ macro_rules! support_if {
 
 mod error;
 mod exec;
+mod format;
 mod id;
 mod module;
 mod parser;
@@ -157,3 +158,4 @@ pub use syntax::{
     FuncType, GlobalType, ImportDesc, Limits, Mut, RefType, ResultType, TableType, ValType,
 };
 pub use valid::prepare;
+pub use valid::merge;

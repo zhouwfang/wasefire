@@ -20,6 +20,7 @@ use core::marker::PhantomData;
 use core::ops::Range;
 
 use crate::error::*;
+use crate::format::section;
 use crate::side_table::*;
 use crate::syntax::*;
 use crate::toctou::*;
@@ -29,6 +30,15 @@ use crate::*;
 /// Checks whether a WASM module in binary format is valid, and returns the side table.
 pub fn prepare(binary: &[u8]) -> Result<Vec<MetadataEntry>, Error> {
     validate::<Prepare>(binary)
+}
+
+pub fn merge(binary: &[u8], side_table: Vec<MetadataEntry>) -> Result<Vec<u8>, Error> {
+    let mut wasm = vec![];
+    wasm.extend_from_slice(&binary[0 .. 8]);
+    let side_table = serialize(&side_table)?;
+    section(&mut wasm, 0, &side_table, Some("wasefire-sidetable"));
+    wasm.extend_from_slice(&binary[8 ..]);
+    Ok(wasm)
 }
 
 #[allow(dead_code)]

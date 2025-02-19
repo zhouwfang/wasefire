@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
 
@@ -86,6 +87,32 @@ pub struct MetadataEntry {
     pub branch_table: Vec<BranchTableEntry>,
 }
 
+pub fn serialize(side_table: &[MetadataEntry]) -> Result<Vec<u8>, Error> {
+    let mut res = vec![];
+    res.extend_from_slice(&(side_table.len() as u16).to_le_bytes());
+    let mut index = 0;
+    res.extend_from_slice(&(index as u16).to_le_bytes());
+    for entry in side_table {
+        index =
+            try_from::<u16>("index of MetadataEntry", index + 10 + 6 * entry.branch_table.len())?
+                as usize;
+        res.extend_from_slice(&(index as u16).to_le_bytes());
+    }
+    for entry in side_table {
+        let type_idx = try_from::<u16>("MetadataEntry::type_idx", entry.type_idx)?;
+        res.extend_from_slice(&type_idx.to_le_bytes());
+        let range_start =
+            try_from::<u32>("MetadataEntry::parser_range start", entry.parser_range.start)?;
+        res.extend_from_slice(&range_start.to_le_bytes());
+        let range_end = try_from::<u32>("MetadataEntry::parser_range end", entry.parser_range.end)?;
+        res.extend_from_slice(&range_end.to_le_bytes());
+        for branch in &entry.branch_table {
+            res.extend_from_slice(&branch.0);
+        }
+    }
+    Ok(res)
+}
+
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
 pub struct BranchTableEntry([u8; 6]);
@@ -145,4 +172,13 @@ fn parse_u16(data: &[u8], offset: usize) -> u16 {
 
 fn parse_u32(data: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes(data[offset ..][.. 4].try_into().unwrap())
+}
+
+#[allow(unused_variables)]
+fn try_from<T: TryFrom<usize>>(msg: &str, val: usize) -> Result<T, Error> {
+    T::try_from(val).map_err(|_| {
+        #[cfg(feature = "debug")]
+        eprintln!("{msg} overflow");
+        unsupported(if_debug!(Unsupported::SideTable))
+    })
 }
