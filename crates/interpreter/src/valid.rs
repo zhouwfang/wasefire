@@ -193,7 +193,6 @@ impl<'m> BranchTableApi<'m> for MetadataView<'m> {
             source.parser == target.parser
                 && source.result == target.result
                 && source.branch_table == target.branch_table
-                && source.stack <= target.stack,
         )
     }
 
